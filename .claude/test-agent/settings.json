@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit(backend/tests/**)",
+      "Edit(frontend/src/**/*.test.ts)",
+      "Edit(frontend/src/**/*.test.tsx)",
+      "Edit(frontend/src/test/**)",
+      "Skill(analyze-pr-changes)",
+      "Skill(backend-unit-tests)",
+      "Skill(frontend-unit-tests)",
+      "Skill(run-and-verify-tests)",
+      "Skill(test-report)",
+      "Bash(npm --prefix backend test:*)",
+      "Bash(npm --prefix backend run typecheck)",
+      "Bash(npm --prefix backend run test:coverage:*)",
+      "Bash(npm --prefix frontend test:*)",
+      "Bash(npm --prefix frontend run typecheck)",
+      "Bash(npm --prefix frontend run test:coverage:*)",
+      "Bash(node frontend/node_modules/prettier/bin/prettier.cjs:*)",
+      "Bash(node .claude/skills/run-and-verify-tests/scripts/uncovered-lines.mjs:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Edit(frontend/src/test/setup.ts)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "Bash(ssh:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)",
+      "Bash(git stash:*)",
+      "Bash(git clean:*)",
+      "Bash(npm install:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm i:*)",
+      "Bash(npx:*)",
+      "Bash(rm:*)",
+      "Bash(env:*)",
+      "Bash(printenv:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-test-paths.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": []
+    },
+    "filesystem": {
+      "denyWrite": [".github", ".claude", "tools", "backend/src", "backend/prisma", "backend/package.json", "frontend/package.json"]
+    }
+  },
+  "env": {
+    "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+    "NPM_CONFIG_FUND": "false",
+    "TZ": "UTC"
+  }
+}
