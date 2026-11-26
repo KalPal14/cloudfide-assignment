@@ -21,7 +21,7 @@
 | backend | 48 → **82** | 33.0% → **100%** (statements 99.2, branches 100, functions 96.9) |
 | frontend | 18 → **145** | 35.5%¹ → **100%** (statements 99.6, branches 98.8, functions 100) |
 
-¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 8 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)).
+¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 8 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11); branch floors raised to 95% in [#27](https://github.com/KalPal14/cloudfide-assignment/pull/27)).
 
 **Demo:** [PR #12 "clear completed tasks"](https://github.com/KalPal14/cloudfide-assignment/pull/12) shows the full loop over three pushes. See the [example run](#example-run).
 
