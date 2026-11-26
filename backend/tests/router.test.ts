@@ -5,7 +5,7 @@ import { createTodosRouter } from '../src/features/todos/router.ts';
 import { todo } from './fixture.ts';
 
 function setup() {
-  const repository = { list: vi.fn().mockResolvedValue([todo]), create: vi.fn().mockResolvedValue(todo), get: vi.fn(), update: vi.fn(), delete: vi.fn() };
+  const repository = { list: vi.fn().mockResolvedValue([todo]), create: vi.fn().mockResolvedValue(todo), get: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteCompleted: vi.fn() };
   const app = express();
   app.use(express.json());
   app.use('/api/todos', createTodosRouter(repository));
@@ -85,6 +85,15 @@ it('deletes a task with 204 and no body', async () => {
   expect(response.status).toBe(204);
   expect(response.text).toBe('');
   expect(repository.delete).toHaveBeenCalledWith(3);
+});
+it('clears completed tasks without treating "completed" as an id', async () => {
+  const { app, repository } = setup();
+  repository.deleteCompleted.mockResolvedValue(4);
+  const response = await request(app).delete('/api/todos/completed');
+  expect(response.status).toBe(200);
+  expect(response.body).toEqual({ deleted: 4 });
+  expect(repository.deleteCompleted).toHaveBeenCalledOnce();
+  expect(repository.delete).not.toHaveBeenCalled();
 });
 it('returns 404 when deleting a missing task', async () => {
   const { app, repository } = setup();

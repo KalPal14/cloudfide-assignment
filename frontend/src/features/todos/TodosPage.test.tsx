@@ -19,10 +19,20 @@ vi.mock('./hooks/useUpdateTodoMutation', () => ({
   useUpdateTodoMutation: vi.fn(),
 }))
 vi.mock('./components/TodosHeader', () => ({
-  TodosHeader: ({ onCreate }: { onCreate: () => void }) => (
+  TodosHeader: ({
+    onCreate,
+    onClearCompleted,
+    completedCount,
+  }: {
+    onCreate: () => void
+    onClearCompleted: () => void
+    completedCount: number
+  }) => (
     <>
       <h1>Tasks</h1>
       <button onClick={onCreate}>Header create</button>
+      <button onClick={onClearCompleted}>Header clear</button>
+      <span>completed: {completedCount}</span>
     </>
   ),
 }))
@@ -75,6 +85,23 @@ vi.mock('./components/DeleteTodoDialog', () => ({
       <span>deleting {todo.title}</span>
       <button onClick={onDeleted}>Finish deleting</button>
       <button onClick={onClose}>Close deleter</button>
+    </div>
+  ),
+}))
+vi.mock('./components/ClearCompletedDialog', () => ({
+  ClearCompletedDialog: ({
+    count,
+    onCleared,
+    onClose,
+  }: {
+    count: number
+    onCleared: (deleted: number) => void
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label="Clearer">
+      <span>clearing {count}</span>
+      <button onClick={() => onCleared(3)}>Finish clearing</button>
+      <button onClick={onClose}>Close clearer</button>
     </div>
   ),
 }))
@@ -223,6 +250,28 @@ it('edits a task and announces the saved notice', async () => {
   expect(screen.getByText(`editing ${todoFixture.title}`)).toBeVisible()
   await user.click(screen.getByRole('button', { name: 'Finish editing' }))
   expect(notify).toHaveBeenCalledWith('Changes saved.')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('confirms clearing completed tasks with their count, announces it and can cancel', async () => {
+  const user = userEvent.setup()
+  const { notify } = setup({
+    todos: [
+      { ...todoFixture, id: 1, completed: true },
+      { ...todoFixture, id: 2, completed: true },
+      { ...todoFixture, id: 3, completed: false },
+    ],
+  })
+  render(<TodosPage />)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Header clear' }))
+  expect(screen.getByText('clearing 2')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'Close clearer' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(notify).not.toHaveBeenCalled()
+  await user.click(screen.getByRole('button', { name: 'Header clear' }))
+  await user.click(screen.getByRole('button', { name: 'Finish clearing' }))
+  expect(notify).toHaveBeenCalledWith('3 completed tasks cleared.')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
 

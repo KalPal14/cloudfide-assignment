@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatDate, isOverdue, selectTodos, validateTodo } from './todos'
+import {
+  formatClearedNotice,
+  formatDate,
+  isOverdue,
+  selectTodos,
+  validateTodo,
+} from './todos'
 import type { Todo, TodoInput } from '../types'
 
 const base: Todo = {
@@ -112,6 +118,16 @@ describe('isOverdue', () => {
     expect(
       isOverdue({ ...base, due_date: '2026-10-14', completed: true }),
     ).toBe(false)
+  })
+})
+
+describe('formatClearedNotice', () => {
+  it.each([
+    [0, 'No completed tasks to clear.'],
+    [1, '1 completed task cleared.'],
+    [5, '5 completed tasks cleared.'],
+  ])('describes %s cleared tasks', (deleted, text) => {
+    expect(formatClearedNotice(deleted)).toBe(text)
   })
 })
 
