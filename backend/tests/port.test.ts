@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { resolveHost, resolvePort } from '../src/core/port.ts';
+import { formatAddress, resolveHost, resolvePort } from '../src/core/port.ts';
+
+describe('formatAddress', () => {
+  it('joins an IPv4 host or name and port with a colon', () => {
+    expect(formatAddress('127.0.0.1', 8000)).toBe('127.0.0.1:8000');
+    expect(formatAddress('localhost', 80)).toBe('localhost:80');
+  });
+
+  it('brackets IPv6 hosts', () => {
+    expect(formatAddress('::1', 8000)).toBe('[::1]:8000');
+  });
+});
 
 describe('resolvePort', () => {
   it.each([
