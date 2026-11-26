@@ -249,7 +249,7 @@ jobs:
           # lockfiles at the project root inside the sandbox, which breaks Node and Vite module
           # resolution for every frontend test. This step holds no long-lived secret, and the
           # GitHub OIDC request variables are removed from the agent's environment below.
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1' # probe: the root package.json is tracked now
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '0' # probe, control run: scrub off
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
           DISABLE_AUTOUPDATER: '1'
           MODEL: ${{ vars.TEST_AGENT_MODEL || 'claude-sonnet-5-5' }}
