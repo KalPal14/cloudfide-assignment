@@ -31,7 +31,12 @@ describe('renderComment', () => {
     gate: { ok: true, violations: [] },
     flaky: 'pass',
     projects: { backend: { typecheck: 'pass', format: 'skipped', tests: { total: 60, passed: 60 }, testsStatus: 'pass', coverageThresholds: 'pass', coverageBefore: 33, coverageAfter: 95.5 } },
-    diffCoverage: { before: { pct: 20, covered: 2, executable: 10 }, after: { pct: 100, covered: 10, executable: 10 } },
+    diffCoverage: {
+      before: { pct: 20, covered: 2, executable: 10 },
+      after: { pct: 100, covered: 10, executable: 10 },
+      branchesBefore: { pct: 25, covered: 1, total: 4 },
+      branchesAfter: { pct: 100, covered: 4, total: 4 },
+    },
   }
   const meta = { model: 'claude-sonnet-5-5', numTurns: 12, costUsd: 0.4321, durationMs: 90500, skillsUsed: ['analyze-pr-changes', 'backend-unit-tests'], permissionDenials: [{ tool: 'Bash' }], hookBlocks: [] }
 
@@ -40,7 +45,7 @@ describe('renderComment', () => {
     assert.ok(body.startsWith(MARKER))
     assert.match(body, /committed\*\* in `abcdef1`/)
     assert.match(body, /\| `backend\/src\/features\/todos\/router.ts` \| backend \| ✏️ updated \| `backend\/tests\/router.test.ts` \| \+3 ~1 \| covers 404 \\\| 422 \|/)
-    assert.match(body, /Coverage of changed lines:\*\* 20% → \*\*100%\*\*/)
+    assert.match(body, /Coverage of changed lines:\*\* lines 20% → \*\*100%\*\* \(10\/10\); branches 25% → \*\*100%\*\* \(4\/4\)/)
     assert.match(body, /33% → \*\*95.5%\*\*/)
     assert.match(body, /`analyze-pr-changes`, `backend-unit-tests`/)
     assert.match(body, /\$0\.43/)
