@@ -21,6 +21,10 @@ alternatives (`npx`, `cd`, shell redirection) — they are blocked.
 A coverage run may exit non-zero because of coverage thresholds; the report is still written.
 Read the numbers instead of treating that as a test failure.
 
+**If the test commands themselves cannot run** (sandbox, permission or tooling errors before Vitest
+starts), do not write tests blind. Stop, record every remaining manifest file as `needs_human`, and
+put the exact error in `notes`. Unverified tests are worse than no tests.
+
 ## The loop (per test file)
 
 1. Run the file. If it passes, run it a second time with `--sequence.shuffle` appended to check

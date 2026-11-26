@@ -49,6 +49,7 @@ export function classifyFile(path) {
 }
 
 function describeOther(path) {
+  if (/^(\.claude|tools\/test-agent)\//.test(path)) return 'test agent tooling'
   if (/\.(md|txt)$/i.test(path)) return 'documentation'
   if (/(^|\/)(package(-lock)?\.json|\.npmrc|tsconfig[\w.]*\.json|vite\.config\.ts|vitest\.config\.ts|prisma\.config\.ts)$/.test(path))
     return 'build or tooling configuration'
