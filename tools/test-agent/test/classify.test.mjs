@@ -26,6 +26,7 @@ describe('classifyFile', () => {
     'frontend/vite.config.ts': 'build or tooling configuration',
     'frontend/src/styles.css': 'static asset or markup',
     '.github/workflows/ci.yml': 'CI configuration',
+    '.claude/skills/backend-unit-tests/SKILL.md': 'test agent tooling',
   }
   for (const [path, reason] of Object.entries(skipped)) {
     it(`skips ${path} (${reason})`, () => {

@@ -175,7 +175,7 @@ jobs:
         run: |
           mkdir -p "$WORK/baseline"
           for project in backend frontend; do
-            (cd "$project" && npx vitest run --coverage --coverage.reporter=json --coverage.reporter=json-summary \
+            (cd "$project" && npx vitest run --coverage --coverage.reportOnFailure --coverage.reporter=json --coverage.reporter=json-summary \
               --reporter=dot --reporter=json --outputFile.json="../$WORK/baseline/$project-results.json") || true
             cp "$project/coverage/coverage-final.json" "$WORK/baseline/$project-coverage-final.json" || true
             cp "$project/coverage/coverage-summary.json" "$WORK/baseline/$project-coverage-summary.json" || true
@@ -209,10 +209,19 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq bubblewrap socat
-          # Ubuntu 24.04 blocks unprivileged user namespaces, which bubblewrap needs.
+          # Ubuntu restricts unprivileged user namespaces and confines bwrap with an AppArmor
+          # profile that drops capabilities in its children. Claude Code's sandbox applies its
+          # seccomp filter from a nested user namespace inside bwrap, so lift both restrictions
+          # on this ephemeral runner VM (the sandbox itself stays fully enabled).
           if sysctl -n kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
+          if [ -f /etc/apparmor.d/bwrap-userns-restrict ]; then
+            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict || true
+          fi
+          # Fail fast, before any model call, if the sandbox cannot work on this runner.
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-user --unshare-pid -- unshare --user --map-root-user true \
+            || { echo "::error::Nested user namespaces are unavailable; the Claude Code sandbox cannot run."; exit 1; }
           npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
           claude --version
 
@@ -377,7 +386,7 @@ jobs:
               (cd pr/frontend && npx prettier --check $files); rc=$?
               steps+=("--step" "frontend.format=$([ $rc -eq 0 ] && echo success || echo failure)")
             fi
-            (cd "pr/$project" && npx vitest run --coverage --coverage.reporter=json --coverage.reporter=json-summary \
+            (cd "pr/$project" && npx vitest run --coverage --coverage.reportOnFailure --coverage.reporter=json --coverage.reporter=json-summary \
               --reporter=default --reporter=github-actions --reporter=json --outputFile.json="$GITHUB_WORKSPACE/verify/$project-results.json" \
               --reporter=junit --outputFile.junit="$GITHUB_WORKSPACE/verify/$project-junit.xml"); rc=$?
             failed=$(node -e 'try{const r=require(process.argv[1]);console.log(r.numFailedTests+r.numFailedTestSuites)}catch{console.log(1)}' "$GITHUB_WORKSPACE/verify/$project-results.json")
