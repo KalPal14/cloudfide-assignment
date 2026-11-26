@@ -107,9 +107,10 @@ export function buildBackfillManifest({ root, scope, coverage = new Map(), branc
       continue
     }
     const lineCoverage = coverage.get(path)
-    const executable = lineCoverage ? [...lineCoverage.keys()].sort((a, b) => a - b) : []
-    const whole = fileCoverage(lineCoverage)
     const allBranches = branchCoverage.get(path) ?? []
+    // Branch paths can start on lines without a statement (an else block, a `?:` arm).
+    const executable = [...new Set([...(lineCoverage?.keys() ?? []), ...allBranches.map((branch) => branch.line)])].sort((a, b) => a - b)
+    const whole = fileCoverage(lineCoverage)
     if (whole && whole.executable > 0 && whole.uncovered.length === 0 && allBranches.every((branch) => branch.hits > 0)) {
       skipped.push({ path, project: info.project, reason: 'already fully covered (lines and branches)' })
       continue
