@@ -4,9 +4,10 @@ name: Test Agent
 # request, creates or updates unit tests with its skills (.claude/skills), and the
 # result is verified independently before anything is committed.
 #
-#   gate      read-only   decide whether the model is needed at all (no LLM, no secrets)
-#   generate  read-only   run the agent; the API key exists only in that single step
-#   verify    read-only   no secrets: policy check, apply patch, type check, tests, stability
+#   gate      read-only   decide whether the model is needed at all (no LLM, no credentials)
+#   generate  read-only   run the agent; authenticates with short-lived OIDC credentials
+#                         (workload identity federation), so no API key is stored anywhere
+#   verify    read-only   no credentials: policy check, apply patch, type check, tests, stability
 #   publish   write       no PR code executed: commit verified tests, comment, status
 #
 # Manual backfill mode (workflow_dispatch) runs the same agent over one scope of the
@@ -83,7 +84,7 @@ jobs:
           IS_DRAFT: ${{ github.event.pull_request.draft == true }}
           HAS_SKIP_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'skip-test-agent') }}
           IS_BOT: ${{ endsWith(github.actor, '[bot]') }}
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_FEDERATION: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID != '' && vars.ANTHROPIC_ORGANIZATION_ID != '' }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           reason=""
@@ -91,7 +92,7 @@ jobs:
           elif [ "$IS_DRAFT" = "true" ]; then reason="draft pull request (the agent runs when it is marked ready for review)"
           elif [ "$HAS_SKIP_LABEL" = "true" ]; then reason="the skip-test-agent label is set"
           elif [ "$IS_BOT" = "true" ]; then reason="triggered by a bot account"
-          elif [ "$HAS_KEY" != "true" ]; then reason="the ANTHROPIC_API_KEY secret is not configured"
+          elif [ "$HAS_FEDERATION" != "true" ]; then reason="Anthropic workload identity federation is not configured (repository variables ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID)"
           elif [ "$MODE" = "backfill" ] && [ "$REF_NAME" != "main" ]; then reason="backfill runs only on main"
           fi
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
@@ -138,6 +139,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+      id-token: write # GitHub OIDC token, exchanged for short-lived Anthropic credentials
     outputs:
       should_run: ${{ steps.manifest.outputs.should_run }}
     env:
@@ -161,7 +163,7 @@ jobs:
             backend/package-lock.json
             frontend/package-lock.json
 
-      # Runs code from the PR (postinstall scripts) — deliberately before any secret is in scope.
+      # Runs code from the PR (postinstall scripts) before the agent step mints any Anthropic credential.
       - name: Install dependencies
         run: |
           npm ci --prefix backend --no-audit --no-fund
@@ -219,7 +221,14 @@ jobs:
         if: steps.manifest.outputs.should_run == 'true'
         timeout-minutes: 35
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Workload identity federation (no stored secret): the IDs below are not sensitive.
+          # The federation rule in the Claude Console only accepts OIDC tokens issued by GitHub
+          # for this repository (pull_request events and the main branch), scoped to the CI workspace.
+          FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          OIDC_AUDIENCE: ${{ vars.ANTHROPIC_OIDC_AUDIENCE || 'https://api.anthropic.com' }}
           # Strip credentials from every subprocess the agent starts (tests, hooks).
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
@@ -229,17 +238,40 @@ jobs:
           MAX_BUDGET_USD: ${{ needs.gate.outputs.mode == 'pr' && (vars.TEST_AGENT_PR_BUDGET_USD || '3') || (vars.TEST_AGENT_BACKFILL_BUDGET_USD || '5') }}
         run: |
           mkdir -p "$WORK/out"
-          claude -p "$(cat "tools/test-agent/prompts/$MODE.md")" \
-            --agent unit-test-engineer \
-            --setting-sources project \
-            --settings .claude/test-agent/settings.json \
-            --permission-mode dontAsk \
-            --model "$MODEL" \
-            --max-turns "$MAX_TURNS" \
-            --max-budget-usd "$MAX_BUDGET_USD" \
-            --output-format stream-json --verbose \
-            --json-schema "$(cat tools/test-agent/report.schema.json)" \
-            > "$WORK/out/transcript.jsonl"
+          export ANTHROPIC_FEDERATION_RULE_ID="$FEDERATION_RULE_ID" ANTHROPIC_ORGANIZATION_ID="$ORGANIZATION_ID"
+          [ -n "$SERVICE_ACCOUNT_ID" ] && export ANTHROPIC_SERVICE_ACCOUNT_ID="$SERVICE_ACCOUNT_ID"
+          [ -n "$WORKSPACE_ID" ] && export ANTHROPIC_WORKSPACE_ID="$WORKSPACE_ID"
+
+          # The token file lives outside the workspace; the agent's sandbox and permissions deny reading it.
+          token_dir="$RUNNER_TEMP/anthropic-oidc"
+          mkdir -p -m 700 "$token_dir"
+          export ANTHROPIC_IDENTITY_TOKEN_FILE="$token_dir/token"
+          fetch_oidc_token() {
+            local tmp="$ANTHROPIC_IDENTITY_TOKEN_FILE.tmp"
+            curl -fsS --retry 3 -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$OIDC_AUDIENCE" | jq -er .value > "$tmp" \
+              && chmod 600 "$tmp" && mv "$tmp" "$ANTHROPIC_IDENTITY_TOKEN_FILE"
+          }
+          fetch_oidc_token
+          # GitHub OIDC tokens expire after ~5 minutes and each one can be exchanged only once,
+          # while a run takes up to 30 minutes: keep a fresh token on disk for re-exchanges.
+          ( while sleep 60; do fetch_oidc_token || echo "::warning::OIDC token refresh failed"; done ) &
+          refresher=$!
+          trap 'kill "$refresher" 2>/dev/null || true; rm -rf "$token_dir"' EXIT
+
+          # The agent does not need GitHub's OIDC request credentials; keep them out of its environment.
+          env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+            claude -p "$(cat "tools/test-agent/prompts/$MODE.md")" \
+              --agent unit-test-engineer \
+              --setting-sources project \
+              --settings .claude/test-agent/settings.json \
+              --permission-mode dontAsk \
+              --model "$MODEL" \
+              --max-turns "$MAX_TURNS" \
+              --max-budget-usd "$MAX_BUDGET_USD" \
+              --output-format stream-json --verbose \
+              --json-schema "$(cat tools/test-agent/report.schema.json)" \
+              > "$WORK/out/transcript.jsonl"
 
       - name: Extract run facts
         if: always() && steps.agent.outcome != 'skipped'

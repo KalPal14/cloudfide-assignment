@@ -31,6 +31,7 @@
     "deny": [
       "WebFetch",
       "WebSearch",
+      "Read(//home/runner/work/_temp/**)",
       "Edit(frontend/src/test/setup.ts)",
       "Bash(curl:*)",
       "Bash(wget:*)",
@@ -74,6 +75,7 @@
       "allowedDomains": []
     },
     "filesystem": {
+      "denyRead": ["/home/runner/work/_temp"],
       "denyWrite": [".github", ".claude", "tools", "backend/src", "backend/prisma", "backend/package.json", "frontend/package.json"]
     }
   },
