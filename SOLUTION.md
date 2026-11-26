@@ -199,6 +199,8 @@ The agent decided no tests were needed. The new helper's *lines* were executed b
 - **Results:** frontend 151/151, branches of changed lines **85% → 95%** (19/20), 21 turns, $0.14, 45 s, skills `analyze-pr-changes`, `frontend-unit-tests`, `run-and-verify-tests`, `test-report`.
 - **The same sticky comment was updated** each time, not duplicated.
 
+**The same loop on the later workflow.** The three runs above predate the changes to verification, publishing and the sandbox ([#16](https://github.com/KalPal14/cloudfide-assignment/pull/16), [#21](https://github.com/KalPal14/cloudfide-assignment/pull/21), [#26](https://github.com/KalPal14/cloudfide-assignment/pull/26)). The loop ran three more times after #21, in the probe PR [#25](https://github.com/KalPal14/cloudfide-assignment/pull/25): the agent wrote tests for four new helper functions, `verify` passed, and the bot committed after each run. Two of those runs had the hardening mode from #26 on.
+
 ### Backfill results
 
 | Scope | PR | Tests added (measured) | Result | Agent run |
