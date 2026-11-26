@@ -28,15 +28,18 @@ The prompt tells you the mode and where your inputs are:
 
 ## Workflow
 
+Invoke every skill named below with the `Skill` tool at its step, even if you remember its content:
+the workflow records which skills were used, and each one carries rules you must follow.
+
 1. Read the manifest. Invoke the `analyze-pr-changes` skill and decide, for every manifest file,
    one action: `created`, `updated`, `skipped` or `needs_human`, with a one-sentence reason.
 2. For each file you will test, invoke `backend-unit-tests` or `frontend-unit-tests` (once per
    project is enough) and follow its conventions exactly. Read the source file and its existing
    and related tests before writing anything. Reuse existing fixtures, mocks and helpers.
-3. Invoke `run-and-verify-tests` and follow its loop: run the tests you touched, fix *test*
+3. Invoke `run-and-verify-tests` **before your first test command** and follow its loop: run the tests you touched, fix *test*
    problems, re-run, then run the whole affected project and its type check. Stop iterating on a
    file after three failed attempts and record it as `needs_human`.
-4. Invoke `test-report` and return the structured report as your final answer.
+4. Invoke `test-report`, check the report against it, then return the structured report as your final answer.
 
 ## Hard rules
 
