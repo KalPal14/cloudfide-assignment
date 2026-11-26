@@ -1,5 +1,7 @@
 # Taskly App Node
 
+> **Unit-test agent and agentic PR workflow:** see [SOLUTION.md](SOLUTION.md). The custom agent lives in `.claude/agents`, its skills in `.claude/skills`, and the workflow in `.github/workflows/test-agent.yml`.
+
 ## Setup
 
 ```sh
