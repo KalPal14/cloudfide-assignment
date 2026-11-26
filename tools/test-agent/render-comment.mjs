@@ -86,8 +86,12 @@ function verificationSection(verify, manifest) {
   }
   if (verify.diffCoverage) {
     const { before, after } = verify.diffCoverage
-    const label = manifest?.mode === 'backfill' ? 'Line coverage of the target files' : 'Coverage of changed lines'
-    lines.push('', `**${label}:** ${pct(before?.pct)} → **${pct(after?.pct)}** (${after?.covered ?? 0}/${after?.executable ?? 0} executable lines)`)
+    const { branchesBefore, branchesAfter } = verify.diffCoverage
+    const label = manifest?.mode === 'backfill' ? 'Coverage of the target files' : 'Coverage of changed lines'
+    const branchText = branchesAfter?.total
+      ? `; branches ${pct(branchesBefore?.pct)} → **${pct(branchesAfter.pct)}** (${branchesAfter.covered}/${branchesAfter.total})`
+      : ''
+    lines.push('', `**${label}:** lines ${pct(before?.pct)} → **${pct(after?.pct)}** (${after?.covered ?? 0}/${after?.executable ?? 0})${branchText}`)
   }
   const violations = [...(verify.policy?.violations ?? []), ...(verify.gate?.violations ?? [])]
   if (violations.length) {

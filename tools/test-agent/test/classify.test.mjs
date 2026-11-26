@@ -36,7 +36,7 @@ describe('classifyFile', () => {
     })
   }
 
-  it('recognises test code changed by the author', () => {
+  it('recognises test code changed in the PR', () => {
     for (const path of ['backend/tests/router.test.ts', 'frontend/src/App.test.tsx', 'frontend/src/test/setup.ts', 'frontend/src/test/todoFixture.ts']) {
       assert.equal(classifyFile(path).kind, 'test', path)
     }

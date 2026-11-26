@@ -1,7 +1,10 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { extractRun } from '../extract-run.mjs'
-import { coverageOfLines, formatRanges } from '../lib/coverage.mjs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { branchesOnLines, coverageOfLines, formatRanges, loadBranchCoverage, loadLineCoverage } from '../lib/coverage.mjs'
 import { diffCoverage } from '../diff-coverage.mjs'
 import { outcome, summarize } from '../summarize-verify.mjs'
 
@@ -43,10 +46,39 @@ describe('coverage helpers', () => {
     assert.deepEqual(coverageOfLines(lines, [1, 2, 3, 4]), { executable: 3, covered: 2, uncovered: [2], pct: 66.7, measured: true })
     assert.equal(coverageOfLines(undefined, [1]).measured, false)
   })
+  it('reads line and branch coverage from an Istanbul report', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cov-'))
+    try {
+      const file = join(dir, 'coverage-final.json')
+      writeFileSync(file, JSON.stringify({
+        [join(dir, 'src/a.ts')]: {
+          path: join(dir, 'src/a.ts'),
+          statementMap: { 0: { start: { line: 2 } }, 1: { start: { line: 3 } } },
+          s: { 0: 4, 1: 0 },
+          branchMap: { 0: { type: 'cond-expr', loc: { start: { line: 3 } }, locations: [{ start: { line: 3 } }, { start: { line: 4 } }] } },
+          b: { 0: [2, 0] },
+        },
+      }))
+      assert.deepEqual([...loadLineCoverage(file, dir).get('src/a.ts')], [[2, 4], [3, 0]])
+      const branches = loadBranchCoverage(file, dir).get('src/a.ts')
+      assert.deepEqual(branches, [{ line: 3, type: 'cond-expr', hits: 2 }, { line: 4, type: 'cond-expr', hits: 0 }])
+      assert.deepEqual(branchesOnLines(branches, [3, 4]), { total: 2, covered: 1, uncovered: [{ line: 4, type: 'cond-expr' }], pct: 50, measured: true })
+      assert.equal(branchesOnLines(undefined, [1]).measured, false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it('computes changed-lines coverage before and after', () => {
     const manifest = { files: [{ path: 'a.ts', project: 'backend', changedLines: [1, 2], changedLinesCoverage: { executable: 2, covered: 0, pct: 0 }, fileLineCoverage: 0 }] }
-    const result = diffCoverage(manifest, new Map([['a.ts', new Map([[1, 1], [2, 1]])]]))
-    assert.deepEqual(result.total, { before: { executable: 2, covered: 0, pct: 0 }, after: { executable: 2, covered: 2, pct: 100 } })
+    const branches = new Map([['a.ts', [{ line: 2, type: 'if', hits: 1 }, { line: 2, type: 'if', hits: 0 }]]])
+    const result = diffCoverage({ files: [{ ...manifest.files[0], changedBranchesCoverage: { total: 2, covered: 0, pct: 0 } }] }, new Map([['a.ts', new Map([[1, 1], [2, 1]])]]), branches)
+    assert.deepEqual(result.total, {
+      before: { executable: 2, covered: 0, pct: 0 },
+      after: { executable: 2, covered: 2, pct: 100 },
+      branchesBefore: { total: 2, covered: 0, pct: 0 },
+      branchesAfter: { total: 2, covered: 1, pct: 50 },
+    })
+    assert.deepEqual(result.files[0].stillUncoveredBranches, [{ line: 2, type: 'if' }])
   })
 })
 
