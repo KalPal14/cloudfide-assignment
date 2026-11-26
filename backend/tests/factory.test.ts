@@ -1,3 +1,4 @@
+import express from 'express';
 import request from 'supertest';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createDatabase } from '../src/core/database.ts';
@@ -33,6 +34,18 @@ it('answers 413 for bodies over the limit', async () => {
   const response = await request(app).post('/api/todos').send({ title: 'x'.repeat(200_000) });
   expect(response.status).toBe(413);
   expect(response.body).toEqual({ detail: 'Request body too large.' });
+});
+
+it('does not write a second response when an error occurs after headers were sent', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(database.todo, 'findMany').mockResolvedValue([]);
+  vi.spyOn(express.response, 'json').mockImplementation(function (this: express.Response) {
+    this.status(200).send('partial');
+    throw new Error('late failure');
+  });
+  const response = await request(app).get('/api/todos').then((r) => r, (e: unknown) => e);
+  expect(log).not.toHaveBeenCalled();
+  expect((response as { body?: unknown }).body).not.toEqual({ detail: 'Internal Server Error' });
 });
 
 it('answers 500 and logs unexpected errors', async () => {
