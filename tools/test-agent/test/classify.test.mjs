@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { classifyFile, importedModules, relatedTests, testCandidateFor } from '../lib/classify.mjs'
 
 describe('classifyFile', () => {
-  const testable = ['backend/src/factory.ts', 'backend/src/features/todos/router.ts', 'frontend/src/lib/http.ts', 'frontend/src/features/todos/TodosPage.tsx', 'frontend/src/design-system/components/Button/Button.tsx', 'frontend/src/design-system/components/Badge/Badge.variants.ts']
+  const testable = ['backend/src/factory.ts', 'backend/src/features/todos/router.ts', 'frontend/src/lib/http.ts', 'frontend/src/features/todos/TodosPage.tsx', 'frontend/src/design-system/components/Button/Button.tsx']
   for (const path of testable) {
     it(`treats ${path} as testable source`, () => {
       const result = classifyFile(path)
@@ -17,6 +17,7 @@ describe('classifyFile', () => {
     'frontend/src/design-system/components/Button/Button.styles.ts': 'styled-components styles',
     'frontend/src/design-system/components/Button/Button.stories.tsx': 'Storybook story',
     'frontend/src/design-system/components/Button/Button.types.ts': 'type-only module',
+    'frontend/src/design-system/components/Badge/Badge.variants.ts': 'styled-components variant styles',
     'frontend/src/features/todos/index.ts': 'barrel re-export',
     'backend/src/generated/prisma/client.ts': 'generated Prisma client',
     'frontend/src/main.tsx': 'browser entrypoint (render bootstrap)',

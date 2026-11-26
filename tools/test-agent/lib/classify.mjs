@@ -8,6 +8,7 @@ const NOT_TESTABLE = [
   [/\.types\.ts$/, 'type-only module'],
   [/\.d\.ts$/, 'type declarations'],
   [/\.styles\.ts$/, 'styled-components styles'],
+  [/\.variants\.ts$/, 'styled-components variant styles'],
   [/\.stories\.tsx?$/, 'Storybook story'],
   [/(^|\/)index\.ts$/, 'barrel re-export'],
   [/(^|\/)(constants|[\w-]+\.constants)\.tsx?$/, 'static constants'],
