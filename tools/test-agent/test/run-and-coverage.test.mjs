@@ -101,6 +101,27 @@ describe('summarize-verify', () => {
     assert.equal(result.verdict, 'fail')
     assert.deepEqual(result.reasons, ['backend type check failed', 'backend tests failed'])
   })
+  it('passes only when the quality gate reported a result', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'summarize-'))
+    try {
+      const results = join(dir, 'backend-results.json')
+      writeFileSync(results, JSON.stringify({ numTotalTests: 2, numPassedTests: 2, numFailedTests: 0, numFailedTestSuites: 0 }))
+      const input = {
+        policy: { ok: true, empty: false, violations: [], files: [] },
+        diffCoverage: null,
+        results: new Map([['backend', results]]),
+        summaryBefore: new Map(),
+        summaryAfter: new Map(),
+        steps: new Map([['backend.typecheck', 'success'], ['flaky', 'success']]),
+      }
+      assert.equal(summarize({ ...input, gate: { ok: true, violations: [] } }).verdict, 'pass')
+      const withoutGate = summarize({ ...input, gate: null })
+      assert.equal(withoutGate.verdict, 'fail')
+      assert.deepEqual(withoutGate.reasons, ['quality gate did not run'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it('reports an empty patch as empty', () => {
     const result = summarize({ policy: { ok: true, empty: true, violations: [], files: [] }, gate: null, diffCoverage: null, results: new Map(), summaryBefore: new Map(), summaryAfter: new Map(), steps: new Map() })
     assert.equal(result.verdict, 'empty')

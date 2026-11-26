@@ -6,7 +6,7 @@
 // node quality-gate.mjs --root . --policy policy.json \
 //   --before backend=before/backend.json --after backend=after/backend.json ... --out gate.json
 import { existsSync, readFileSync } from 'node:fs'
-import { join, relative, isAbsolute } from 'node:path'
+import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { readJson, writeJson } from './lib/io.mjs'
@@ -26,13 +26,29 @@ export function checkContent(path, content, { spec }) {
   return violations
 }
 
-/** Map of repo-relative test file -> list of {title, status} from a Vitest JSON report. */
-export function loadResults(file, root) {
+/**
+ * Repo-relative path of a test file named in a project's Vitest report, or null.
+ *
+ * Reports hold absolute paths of the checkout that produced them, and the baseline is taken by
+ * another job in another directory than the run being verified. Resolving both against one root
+ * turned baseline paths into "../backend/tests/x.test.ts", which matched nothing and silently
+ * disabled the comparison. Vitest runs inside `<checkout>/<project>`, so anchor on that directory
+ * (the last one of that name, in case the checkout itself is called "backend").
+ */
+export function repoPath(name, project) {
+  const segments = String(name).split(/[\\/]+/)
+  const index = segments.lastIndexOf(project)
+  return index === -1 ? null : segments.slice(index).join('/')
+}
+
+/** Map of repo-relative test file -> list of {title, status} from one project's Vitest JSON report. */
+export function loadResults(file, project) {
   const results = new Map()
   if (!file || !existsSync(file)) return null
   const report = JSON.parse(readFileSync(file, 'utf8'))
   for (const suite of report.testResults ?? []) {
-    const path = (isAbsolute(suite.name) ? relative(root, suite.name) : suite.name).split('\\').join('/')
+    // A path that cannot be mapped keeps its name, and main() reports it instead of dropping it.
+    const path = repoPath(suite.name, project) ?? String(suite.name)
     results.set(path, {
       suiteStatus: suite.status,
       message: suite.message ?? '',
@@ -81,13 +97,17 @@ function parsePairs(values) {
   return pairs
 }
 
-function mergeResults(files, root) {
+/** Merge the reports of several projects; paths outside their project directory go to `unmapped`. */
+function mergeResults(pairs, unmapped) {
   let merged = null
-  for (const file of files) {
-    const results = loadResults(file, root)
+  for (const [project, file] of pairs) {
+    const results = loadResults(file, project)
     if (!results) continue
     merged ??= new Map()
-    for (const [path, value] of results) merged.set(path, value)
+    for (const [path, value] of results) {
+      if (path.startsWith(`${project}/`)) merged.set(path, value)
+      else unmapped.push(path)
+    }
   }
   return merged
 }
@@ -111,8 +131,12 @@ function main() {
     violations.push(...checkContent(file.path, readFileSync(absolute, 'utf8'), { spec: file.spec }))
   }
   const afterPairs = parsePairs(values.after)
-  const before = mergeResults([...parsePairs(values.before).values()], values.root)
-  const after = mergeResults([...afterPairs.values()], values.root)
+  const unmapped = []
+  const before = mergeResults(parsePairs(values.before), unmapped)
+  const after = mergeResults(afterPairs, unmapped)
+  for (const path of new Set(unmapped)) {
+    violations.push({ path, reason: 'test result is outside its project directory and could not be compared with the baseline' })
+  }
   const comparison = compareResults({
     before,
     after,
