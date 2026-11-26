@@ -227,6 +227,9 @@ jobs:
           # Fail fast, before any model call, if the sandbox cannot work on this runner.
           bwrap --ro-bind / / --dev /dev --proc /proc --unshare-user --unshare-pid -- unshare --user --map-root-user true \
             || { echo "::error::Nested user namespaces are unavailable; the Claude Code sandbox cannot run."; exit 1; }
+          # Without a real root package.json the env-scrub mode leaves an empty placeholder there,
+          # and no frontend test can start inside the sandbox.
+          [ -s package.json ] || { echo "::error::The root package.json is missing or empty; frontend tests cannot run inside the sandbox."; exit 1; }
           npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
           claude --version
 
@@ -243,13 +246,16 @@ jobs:
           SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
           WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           OIDC_AUDIENCE: ${{ vars.ANTHROPIC_OIDC_AUDIENCE || 'https://api.anthropic.com' }}
-          # Isolation comes from the regular Claude Code sandbox (.claude/test-agent/settings.json:
-          # no network, deny writes outside tests, deny reads of the OIDC token directory).
-          # The env-scrub hardening mode is off on purpose: it also blanks package.json and
-          # lockfiles at the project root inside the sandbox, which breaks Node and Vite module
-          # resolution for every frontend test. This step holds no long-lived secret, and the
-          # GitHub OIDC request variables are removed from the agent's environment below.
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '0'
+          # Isolation comes from the Claude Code sandbox (.claude/test-agent/settings.json: no
+          # network, deny writes outside tests, deny reads of the OIDC token directory) and from
+          # the env-scrub hardening mode: credentials are stripped from the environment of every
+          # command the agent starts, and those commands run in their own PID namespace, so they
+          # cannot read another process's environment. The GitHub OIDC request variables are
+          # removed from the agent's environment below as well.
+          # The mode write-protects config files at the project root and puts an empty placeholder
+          # where one is missing. An empty package.json breaks Node and Vite, which is why the root
+          # package.json is tracked and checked before the agent starts.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
           DISABLE_AUTOUPDATER: '1'
           MODEL: ${{ vars.TEST_AGENT_MODEL || 'claude-sonnet-5-5' }}
