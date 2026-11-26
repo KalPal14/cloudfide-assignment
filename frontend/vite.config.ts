@@ -30,7 +30,7 @@ export default defineConfig({
       reporter: ['text', 'html', 'lcov', 'json-summary'],
       reportsDirectory: './coverage',
       // Floors just below the level reached by the test backfill.
-      thresholds: { lines: 95, statements: 95, branches: 85, functions: 95 },
+      thresholds: { lines: 95, statements: 95, branches: 95, functions: 95 },
     },
   },
 })
