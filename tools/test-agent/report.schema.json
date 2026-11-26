@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Test agent report",
   "description": "Structured result of one unit-test-engineer run. Facts about tool usage, cost and verification are collected by the harness, not taken from this report.",
   "type": "object",

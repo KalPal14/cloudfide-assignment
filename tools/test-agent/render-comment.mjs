@@ -68,7 +68,7 @@ function decisionsSection(report, manifest) {
   return lines
 }
 
-function verificationSection(verify) {
+function verificationSection(verify, manifest) {
   if (!verify) return []
   const projects = Object.entries(verify.projects ?? {})
   const lines = ['### Verification', '', '_Independent job without secrets: applies the patch to a fresh checkout and re-runs everything._', '']
@@ -86,7 +86,8 @@ function verificationSection(verify) {
   }
   if (verify.diffCoverage) {
     const { before, after } = verify.diffCoverage
-    lines.push('', `**Coverage of changed lines:** ${pct(before?.pct)} → **${pct(after?.pct)}** (${after?.covered ?? 0}/${after?.executable ?? 0} executable lines)`)
+    const label = manifest?.mode === 'backfill' ? 'Line coverage of the target files' : 'Coverage of changed lines'
+    lines.push('', `**${label}:** ${pct(before?.pct)} → **${pct(after?.pct)}** (${after?.covered ?? 0}/${after?.executable ?? 0} executable lines)`)
   }
   const violations = [...(verify.policy?.violations ?? []), ...(verify.gate?.violations ?? [])]
   if (violations.length) {
@@ -143,7 +144,7 @@ export function renderComment(ctx) {
   const notes = (report?.notes ?? []).length
     ? ['<details><summary>Agent notes</summary>', '', ...report.notes.slice(0, 10).map((note) => `- ${cell(note, 300)}`), '', '</details>']
     : []
-  for (const section of [decisionsSection(report, manifest), verificationSection(verify), findingsSection(report), runSection(meta, ctx), notes]) {
+  for (const section of [decisionsSection(report, manifest), verificationSection(verify, manifest), findingsSection(report), runSection(meta, ctx), notes]) {
     if (section.length) lines.push(...section, '')
   }
   if (outcome === 'committed' || outcome === 'proposed') {
