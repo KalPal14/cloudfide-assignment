@@ -10,3 +10,7 @@ export function createHealthRouter(database: Database) {
   });
   return router;
 }
+
+export function describeHealth(databaseReachable: boolean): { status: 'ok' | 'degraded' } {
+  return { status: databaseReachable ? 'ok' : 'degraded' };
+}
