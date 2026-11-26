@@ -47,6 +47,28 @@ it('creates a new task and reports a successful save', async () => {
   expect(update).not.toHaveBeenCalled()
 })
 
+it('ignores a submit while the editor is busy', async () => {
+  const user = userEvent.setup()
+  const create = vi.fn()
+  const update = vi.fn()
+  vi.mocked(useCreateTodoMutation).mockReturnValue({
+    isPending: false,
+    error: null,
+    mutateAsync: create,
+  } as unknown as ReturnType<typeof useCreateTodoMutation>)
+  vi.mocked(useUpdateTodoMutation).mockReturnValue({
+    isPending: false,
+    error: null,
+    mutateAsync: update,
+  } as unknown as ReturnType<typeof useUpdateTodoMutation>)
+  const onSaved = vi.fn()
+  render(<TodoEditor todo="new" busy onClose={vi.fn()} onSaved={onSaved} />)
+  await user.click(screen.getByRole('button', { name: 'Submit form' }))
+  expect(create).not.toHaveBeenCalled()
+  expect(update).not.toHaveBeenCalled()
+  expect(onSaved).not.toHaveBeenCalled()
+})
+
 it('updates an existing task and reports the saved changes', async () => {
   const user = userEvent.setup()
   const create = vi.fn()

@@ -122,6 +122,35 @@ it('displays a query failure and resets mutation errors before retrying', async 
   )
 })
 
+it('treats a query without data as an empty task list', () => {
+  vi.mocked(useTodosQuery).mockReturnValue({
+    data: undefined,
+    isPending: true,
+    isFetching: true,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useTodosQuery>)
+  vi.mocked(useUpdateTodoMutation).mockReturnValue({
+    error: null,
+    reset: vi.fn(),
+    mutateAsync: vi.fn(),
+  } as unknown as ReturnType<typeof useUpdateTodoMutation>)
+  vi.mocked(useTodosBusy).mockReturnValue(false)
+  vi.mocked(useNotice).mockReturnValue({ message: '', notify: vi.fn() })
+  vi.mocked(useTodoFilters).mockReturnValue({
+    filter: 'all',
+    search: '',
+    sort: 'newest',
+    visible: [],
+    setFilter: vi.fn(),
+    setSearch: vi.fn(),
+    setSort: vi.fn(),
+  })
+  render(<TodosPage />)
+  expect(useTodoFilters).toHaveBeenCalledWith([])
+})
+
 function setup({
   busy = false,
   mutateAsync = vi.fn(),
