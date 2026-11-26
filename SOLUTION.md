@@ -18,10 +18,10 @@
 
 | | Tests before → after | Line coverage before → after |
 |---|---|---|
-| backend | 48 → **80** | 33.0% → **100%** (statements 98.4, branches 95.8, functions 96.9) |
-| frontend | 18 → **136** | 35.5%¹ → **100%** (statements 99.1, branches 93.6, functions 100) |
+| backend | 48 → **82** | 33.0% → **100%** (statements 99.2, branches 100, functions 96.9) |
+| frontend | 18 → **145** | 35.5%¹ → **100%** (statements 99.6, branches 98.8, functions 100) |
 
-¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 6 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)).
+¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 8 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)).
 
 **Demo:** [PR #12 "clear completed tasks"](https://github.com/KalPal14/cloudfide-assignment/pull/12) shows the full loop over three pushes. See the [example run](#example-run).
 
@@ -96,6 +96,7 @@
    - approval required for all external contributors;
    - SHA pinning required.
 4. **A `skip-test-agent` label**, used to opt a pull request out.
+5. **A ruleset on `main`** (optional, used here): changes only through pull requests, required checks `backend`, `frontend` and `test-agent tools`, no force pushes, no deletion.
 
 ### Pull requests (automatic)
 
@@ -208,8 +209,10 @@ The agent decided no tests were needed. The new helper's *lines* were executed b
 | frontend-hooks-lib | [#8](https://github.com/KalPal14/cloudfide-assignment/pull/8) | 41 | frontend lines 49% → 74% | 42 turns, $0.29 |
 | frontend-design-system | [#10](https://github.com/KalPal14/cloudfide-assignment/pull/10) | 57 | frontend lines 74% → 100% | 43 turns, $0.33 |
 | frontend-hooks-lib (follow-up after [#18](https://github.com/KalPal14/cloudfide-assignment/pull/18)) | [#19](https://github.com/KalPal14/cloudfide-assignment/pull/19) | 2 | `utils/todos.ts` branches 94.4% → 100% (sorting tie-breaks) | 16 turns, $0.09 |
+| backend-core-api (branches, after [#21](https://github.com/KalPal14/cloudfide-assignment/pull/21)) | [#22](https://github.com/KalPal14/cloudfide-assignment/pull/22) | 2 | backend branches 95.8% → 100% (default port, error after the headers were sent) | 21 turns, $0.10 |
+| frontend-components (branches, after [#21](https://github.com/KalPal14/cloudfide-assignment/pull/21)) | [#23](https://github.com/KalPal14/cloudfide-assignment/pull/23) | 9 | frontend branches 93.6% → 98.8%; `TodoItem.tsx` 35.7% → 100%. Skipped with a reason: a pending guard the UI cannot reach | 35 turns, $0.23 |
 
-All agent runs that did work, including the failed ones and the sandbox probes: **16 runs, $3.18 in total**.
+All agent runs that did work, including the failed ones and the sandbox probes: **18 runs, $3.51 in total**.
 
 ### Implementation notes
 
@@ -219,7 +222,7 @@ Problems found in real runs and how they were fixed. Each problem was caught by 
 - **Sandbox failed on Ubuntu runners** (`apply-seccomp: nested userns is capability-restricted`). Ubuntu's AppArmor `bwrap-userns-restrict` profile drops capabilities in bwrap's children. The job now unloads it on the ephemeral VM and self-tests nested user namespaces before any model call ([#3](https://github.com/KalPal14/cloudfide-assignment/pull/3)). The agent had reported its tests as *unverified*, and `verify` rejected them: 1 of 68 failing, unstable under shuffling.
 - **No frontend test could start inside the sandbox.** The `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` hardening mode blanks the project-root `package.json`, which Node and Vite read. The workflow now uses the regular sandbox ([#7](https://github.com/KalPal14/cloudfide-assignment/pull/7), [#9](https://github.com/KalPal14/cloudfide-assignment/pull/9)). Two batches had failed verification, so nothing broken was committed.
 - **The sandbox did not enforce relative `denyWrite` entries.** The probe in [#15](https://github.com/KalPal14/cloudfide-assignment/pull/15) showed that test code could still write to `backend/src`. Relative entries in a `--settings` file have no documented base directory. The workflow now resolves them to absolute paths ([#16](https://github.com/KalPal14/cloudfide-assignment/pull/16)), and the re-run of the probe confirmed the fix. The patch policy, the final boundary, was never bypassed: it discarded the probe file.
-- **Gaps found by reviewing the run artifacts**, not by a failing run:
+- **Gaps found by reviewing the run artifacts**, not by a failing run ([#21](https://github.com/KalPal14/cloudfide-assignment/pull/21)). The two backfill runs above were the first to use the new checks:
   - The "no tests lost" comparison never matched anything. The baseline and the verified run had different checkout roots, so every `before` count in `gate.json` was 0. Test paths are now anchored on the project directory, and a result that cannot be mapped is a violation.
   - `git apply` also applies a traditional `---`/`+++` section, which the policy parser does not read. The staged index is now checked after the patch is applied.
   - The `publish` job read artifact JSON with `require()`, which executes a directory of that name. It now uses `jq`.
@@ -245,6 +248,7 @@ Problems found in real runs and how they were fixed. Each problem was caught by 
   - Commits and PRs made with `GITHUB_TOKEN` start `pull_request` runs that wait for maintainer approval (`action_required`), and GitHub closes them if nobody approves.
   - The workflow therefore sets a commit status and dispatches CI for the new commit itself.
   - Approving such a run is safe: Test Agent skips runs triggered by a bot, so the report in the comment stays.
+  - The dispatched CI run does not count towards required checks. With the ruleset on `main`, a pull request whose head is a bot commit can be merged only after a maintainer approves the waiting runs. That is one click, and it keeps a person between the agent's commit and `main`.
 - **Fork PRs get no agent run.**
 - **The sandbox setup is Ubuntu-specific:** the job lifts the AppArmor user-namespace restriction on the ephemeral runner.
 - **Large PRs:** up to 15 files per run; the rest are listed as deferred.
