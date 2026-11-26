@@ -61,6 +61,17 @@ it('shutdown reports a disconnect failure through the exit code', async () => {
   expect(log).toHaveBeenCalledWith(error);
 });
 
+it('listens on port 8000 on all interfaces when API_PORT is not set', async () => {
+  vi.stubEnv('API_PORT', '');
+  vi.spyOn(process, 'once').mockImplementation(() => process);
+  const listener = { once: vi.fn(), address: () => ({ port: 8000 }) };
+  const listen = vi.fn((_port: number, _host: string, callback: () => void) => { queueMicrotask(callback); return listener; });
+  vi.mocked(createApp).mockReturnValue({ listen } as never);
+  const { server } = await start();
+  expect(listen).toHaveBeenCalledWith(8000, '0.0.0.0', expect.any(Function));
+  expect(server).toBe(listener);
+});
+
 it('disconnects and rethrows when initialization fails', async () => {
   const error = new Error('init failed');
   vi.mocked(initialize).mockRejectedValue(error);
