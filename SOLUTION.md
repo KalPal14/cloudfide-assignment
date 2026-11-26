@@ -46,6 +46,7 @@
 
 - Same-repository PR authors are trusted: they already have write access.
 - Fork PRs get no OIDC token and are skipped explicitly. `pull_request_target` is never used.
+- `id-token: write` applies to the whole `generate` job. PR code that runs in `npm ci` or in the baseline tests could therefore request a GitHub OIDC token and exchange it for an Anthropic credential that lasts about 10 minutes. The trust assumption above covers this; the production section below describes how to remove it.
 
 **Threats addressed:**
 
@@ -245,6 +246,7 @@ Problems found in real runs and how they were fixed. Each problem was caught by 
   - Use a **GitHub App** identity instead of `GITHUB_TOKEN`. Bot commits would then trigger CI natively, and the bot would have a distinct, auditable identity.
   - Support fork PRs with a two-workflow split: an unprivileged `pull_request` job builds the manifest; a privileged `workflow_run` job runs the agent after a maintainer applies a label.
   - Add a deployment environment with required reviewers if the repository has untrusted writers.
+  - Run `npm ci` and the baseline coverage run in a job without `id-token`, and pass the installed workspace to the agent job as an artifact. PR code would then never run alongside OIDC access.
 - **Quality**
   - Mutation testing (Stryker) on the changed files, to check that the new tests catch regressions.
   - Flaky-test history.
