@@ -7,3 +7,7 @@ export function resolveHost(value: string | undefined, fallback = '0.0.0.0'): st
   const host = value?.trim();
   return host ? host : fallback;
 }
+
+export function formatAddress(host: string, port: number): string {
+  return host.includes(':') ? `[${host}]:${port}` : `${host}:${port}`;
+}
