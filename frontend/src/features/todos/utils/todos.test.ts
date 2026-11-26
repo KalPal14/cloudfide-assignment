@@ -36,6 +36,29 @@ describe('selectTodos', () => {
     expect(todos).toEqual([base, high])
   })
 
+  it('sorts by priority high, medium, low and ties by newest id', () => {
+    const low = { ...base, id: 1, priority: 'low' as const }
+    const medOld = { ...base, id: 2 }
+    const medNew = { ...base, id: 3 }
+    const high = { ...base, id: 4, priority: 'high' as const }
+    expect(
+      selectTodos([low, medOld, medNew, high], 'all', '', 'priority').map(
+        (t) => t.id,
+      ),
+    ).toEqual([4, 3, 2, 1])
+  })
+
+  it('orders several undated tasks by newest id when sorting by due date', () => {
+    const todos = [
+      { ...base, id: 1 },
+      { ...base, id: 2 },
+      { ...base, id: 3, due_date: '2026-11-01' },
+    ]
+    expect(selectTodos(todos, 'all', '', 'due').map((t) => t.id)).toEqual([
+      3, 2, 1,
+    ])
+  })
+
   it('sorts by due date with undated tasks last, ties by newest id', () => {
     const late = { ...base, id: 1, due_date: '2026-12-01' }
     const early = { ...base, id: 2, due_date: '2026-11-01' }
