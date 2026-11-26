@@ -4,13 +4,21 @@
 // agent's own permissions and hooks are defence in depth; this check is the one
 // that decides.
 //
+// It decides twice. The patch text is checked before it is applied, and with
+// --staged the index is checked after `git apply --index`: git accepts more
+// patch formats than the parser here reads (a traditional `---`/`+++` section
+// after a git one changes files the text check never sees), so what counts is
+// what git actually staged.
+//
 // node verify-patch.mjs --patch agent.patch --out policy.json
+// node verify-patch.mjs --patch agent.patch --staged <checkout> --out policy.json
 import { readFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { parseDiff } from './lib/diff.mjs'
 import { checkTestPath, isTestSpec } from './lib/path-policy.mjs'
 import { projectOf } from './lib/classify.mjs'
+import { git } from './lib/git.mjs'
 import { writeJson } from './lib/io.mjs'
 
 export const LIMITS = { maxFiles: 40, maxAddedLinesPerFile: 1500, maxPatchBytes: 1024 * 1024 }
@@ -60,9 +68,49 @@ export function verifyPatch(text) {
   }
 }
 
+/** Parse `git diff --cached --raw -z --no-renames`: one entry per staged path. */
+export function parseRaw(output) {
+  const entries = []
+  const parts = output.split('\0')
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const [oldMode, newMode, , , status] = parts[i].replace(/^:/, '').split(' ')
+    entries.push({ path: parts[i + 1], status, oldMode, newMode })
+  }
+  return entries
+}
+
+/**
+ * Check what `git apply --index` staged against the policy and against the files the
+ * text check saw. Anything staged that the text check did not list was never checked
+ * for size or content, and is not run by the quality gate, so it is a violation even
+ * when its path is allowed.
+ */
+export function verifyStaged(entries, expectedPaths) {
+  const violations = []
+  const expected = new Set(expectedPaths)
+  for (const { path, status, oldMode, newMode } of entries) {
+    const check = checkTestPath(path)
+    if (!check.allowed) violations.push({ path, reason: `staged by git: ${check.reason}` })
+    if (status !== 'A' && status !== 'M') {
+      violations.push({ path, reason: `staged by git with status ${status}; the agent may only add or edit test files` })
+    } else if (newMode !== REGULAR_FILE || (status === 'M' && oldMode !== REGULAR_FILE)) {
+      violations.push({ path, reason: `staged by git with file mode ${oldMode} -> ${newMode}; only regular files are allowed` })
+    }
+    if (!expected.delete(path)) violations.push({ path, reason: 'changed by git apply but not listed by the patch check (the patch is not plain `git diff` output)' })
+  }
+  for (const path of expected) violations.push({ path, reason: 'listed by the patch check but not staged by git apply' })
+  return violations
+}
+
 function main() {
-  const { values } = parseArgs({ options: { patch: { type: 'string' }, out: { type: 'string' } } })
+  const { values } = parseArgs({ options: { patch: { type: 'string' }, staged: { type: 'string' }, out: { type: 'string' } } })
   const result = verifyPatch(readFileSync(values.patch, 'utf8'))
+  if (values.staged !== undefined) {
+    const staged = parseRaw(git(['diff', '--cached', '--raw', '-z', '--no-renames', '--abbrev=40'], { cwd: values.staged }))
+    result.violations.push(...verifyStaged(staged, result.files.map((file) => file.path)))
+    result.ok = result.violations.length === 0
+    result.empty = result.empty && staged.length === 0
+  }
   if (values.out) writeJson(values.out, result)
   if (result.empty) console.error('Patch is empty: the agent proposed no test changes.')
   else if (result.ok) console.error(`Patch policy OK: ${result.files.length} test file(s).`)

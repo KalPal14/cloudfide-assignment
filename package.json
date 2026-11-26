@@ -1,0 +1,11 @@
+{
+  "name": "taskly-app-node",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Workspace root. backend/ and frontend/ are independent npm projects with their own dependencies.",
+  "scripts": {
+    "test": "npm --prefix backend test && npm --prefix frontend test",
+    "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck",
+    "test:agent-tools": "node --test 'tools/test-agent/test/*.test.mjs'"
+  }
+}

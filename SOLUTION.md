@@ -32,7 +32,7 @@
 | Decision | Why |
 |---|---|
 | **Claude Code CLI as the agent runtime**, version pinned, called directly rather than through a wrapper action | Custom agents (`.claude/agents`) and Agent Skills (`.claude/skills`) are native, so the same agent and skills work in a developer's terminal and unattended in CI. Calling the CLI directly avoids the GitHub App and auto-commit behaviour of `claude-code-action`. The workflow, not the model, decides what reaches the repository. |
-| **Deterministic code around a narrow model task** | [`tools/test-agent/`](tools/test-agent) (zero dependencies, 112 `node:test` tests) does everything that must be exact: the change manifest, file classification and prioritisation, patch collection, path policy, quality gate, diff coverage, verdict and report rendering. The model only decides *what* to test and writes the tests. |
+| **Deterministic code around a narrow model task** | [`tools/test-agent/`](tools/test-agent) (zero dependencies, 128 `node:test` tests) does everything that must be exact: the change manifest, file classification and prioritisation, patch collection, path policy, quality gate, diff coverage, verdict and report rendering. The model only decides *what* to test and writes the tests. |
 | **Gate before the model** | Types, styles, stories, barrels, docs, config, generated code and tests changed in the PR are filtered out deterministically. PRs without testable changes never call the model and cost $0 ([#2](https://github.com/KalPal14/cloudfide-assignment/pull/2), [#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)). Runs are capped at 15 files. Files are ordered by uncovered changed lines and branches. |
 | **Never trust the agent's own claims** | `verify` runs in a job **without credentials** on a fresh checkout. It applies the patch, then runs: type check, Prettier, the full suites with coverage, the changed specs 3× in shuffled order, a quality gate (no `.only/.skip/.todo/.fails`, no snapshots or `@ts-ignore`, at least one assertion per spec, no lost tests), and line and **branch** coverage of the changed lines before and after. This caught real failures (see [Implementation notes](#implementation-notes)). |
 | **Commit to the PR branch only after verification** | Tests arrive as a normal reviewable commit from `github-actions[bot]`. If verification fails, nothing is pushed: the comment explains why, and the patch stays in the run artifacts. |
@@ -59,9 +59,9 @@
 |---|---|
 | Untrusted input | The PR title and body go to a file labelled untrusted and are never interpolated into shell. The agent and skills treat all repository content as data. |
 | Tools | `--agent` restricts the tools: no web access, no subagents. `--permission-mode dontAsk` applies an explicit Bash allowlist and denylist (`curl`, `git push`, `npm install`, `rm`, `env`, …). Claude Code also blocks shell redirections and loops. |
-| Writes | A PreToolUse hook ([`guard-test-paths.mjs`](.claude/hooks/guard-test-paths.mjs)) blocks `Edit`/`Write` outside the test allowlist. The sandbox denies writes to `backend/src`, `.github`, `.claude` and `tools`. `collect-patch` keeps only allowlisted files and reports the rest. `verify-patch` rejects deletions, renames, symlinks, mode changes, binaries and oversize patches. It runs **from the base branch**, in a job without credentials, and again right before the commit. |
+| Writes | A PreToolUse hook ([`guard-test-paths.mjs`](.claude/hooks/guard-test-paths.mjs)) blocks `Edit`/`Write` outside the test allowlist. The sandbox denies writes to `backend/src`, `.github`, `.claude` and `tools`. `collect-patch` keeps only allowlisted files and reports the rest. `verify-patch` rejects deletions, renames, symlinks, mode changes, binaries and oversize patches. It runs **from the base branch**, in a job without credentials, and again right before the commit. After `git apply` it also checks the staged index, which must hold exactly the files the patch check listed: git reads more patch formats than the policy parser. |
 | Execution | Every Bash command, and therefore every test the agent runs, executes in the Claude Code bubblewrap sandbox. The sandbox has **no network**, cannot write to `backend/src`, `.github`, `.claude` or `tools`, and cannot read the OIDC token directory. **Verified** by a probe PR ([#15](https://github.com/KalPal14/cloudfide-assignment/pull/15)): tests that the agent ran inside its sandbox could not reach the network, write to `backend/src` or read the token. The same probes succeed outside the sandbox (control). The GitHub OIDC request variables are removed from the agent's environment. |
-| Privileges | `permissions` are set per job. Only `publish` can write, and it never installs dependencies or runs PR code. Actions are pinned to SHAs, the repository setting enforces this, and Dependabot keeps the pins current. `persist-credentials: false` is set everywhere except the push checkout. |
+| Privileges | `permissions` are set per job. Only `publish` can write, and it never installs dependencies or runs PR code. It reads the other jobs' artifacts as data (`jq`, never `require()`). Actions are pinned to SHAs, the repository setting enforces this, and Dependabot keeps the pins current. `persist-credentials: false` is set everywhere except the push checkout. |
 | Cost and liveness | `--max-turns` and `--max-budget-usd`: PR 60 turns / $3, backfill 80 / $5. Job and step timeouts, per-PR `concurrency` with cancel-in-progress, and a workspace spend limit. |
 | Output | The comment is rendered deterministically. Model text is HTML-escaped, `@mentions` are neutralised and lengths are capped. |
 
@@ -95,10 +95,11 @@
    - *Allow GitHub Actions to create and approve pull requests* (backfill opens PRs);
    - approval required for all external contributors;
    - SHA pinning required.
+4. **A `skip-test-agent` label**, used to opt a pull request out.
 
 ### Pull requests (automatic)
 
-Open or update a non-draft PR from a branch of this repository. **Test Agent** runs on `opened`, `synchronize`, `reopened` and `ready_for_review`. Add the `skip-test-agent` label to opt out.
+Open or update a non-draft PR from a branch of this repository. **Test Agent** runs on `opened`, `synchronize`, `reopened` and `ready_for_review`. Add the `skip-test-agent` label to opt out. Runs triggered by a bot account (the agent's own commit, Dependabot) are skipped.
 
 ### Coverage backfill (manual)
 
@@ -218,6 +219,11 @@ Problems found in real runs and how they were fixed. Each problem was caught by 
 - **Sandbox failed on Ubuntu runners** (`apply-seccomp: nested userns is capability-restricted`). Ubuntu's AppArmor `bwrap-userns-restrict` profile drops capabilities in bwrap's children. The job now unloads it on the ephemeral VM and self-tests nested user namespaces before any model call ([#3](https://github.com/KalPal14/cloudfide-assignment/pull/3)). The agent had reported its tests as *unverified*, and `verify` rejected them: 1 of 68 failing, unstable under shuffling.
 - **No frontend test could start inside the sandbox.** The `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` hardening mode blanks the project-root `package.json`, which Node and Vite read. The workflow now uses the regular sandbox ([#7](https://github.com/KalPal14/cloudfide-assignment/pull/7), [#9](https://github.com/KalPal14/cloudfide-assignment/pull/9)). Two batches had failed verification, so nothing broken was committed.
 - **The sandbox did not enforce relative `denyWrite` entries.** The probe in [#15](https://github.com/KalPal14/cloudfide-assignment/pull/15) showed that test code could still write to `backend/src`. Relative entries in a `--settings` file have no documented base directory. The workflow now resolves them to absolute paths ([#16](https://github.com/KalPal14/cloudfide-assignment/pull/16)), and the re-run of the probe confirmed the fix. The patch policy, the final boundary, was never bypassed: it discarded the probe file.
+- **Gaps found by reviewing the run artifacts**, not by a failing run:
+  - The "no tests lost" comparison never matched anything. The baseline and the verified run had different checkout roots, so every `before` count in `gate.json` was 0. Test paths are now anchored on the project directory, and a result that cannot be mapped is a violation.
+  - `git apply` also applies a traditional `---`/`+++` section, which the policy parser does not read. The staged index is now checked after the patch is applied.
+  - The `publish` job read artifact JSON with `require()`, which executes a directory of that name. It now uses `jq`.
+  - A run triggered by the agent's own commit replaced the report with "agent not run". Such runs are now skipped.
 - **Smaller fixes:**
   - `--json-schema` needs `StructuredOutput` in the agent's tool list;
   - the schema must be draft-07 compatible;
@@ -238,6 +244,7 @@ Problems found in real runs and how they were fixed. Each problem was caught by 
 - **`GITHUB_TOKEN` and bot runs.**
   - Commits and PRs made with `GITHUB_TOKEN` start `pull_request` runs that wait for maintainer approval (`action_required`), and GitHub closes them if nobody approves.
   - The workflow therefore sets a commit status and dispatches CI for the new commit itself.
+  - Approving such a run is safe: Test Agent skips runs triggered by a bot, so the report in the comment stays.
 - **Fork PRs get no agent run.**
 - **The sandbox setup is Ubuntu-specific:** the job lifts the AppArmor user-namespace restriction on the ephemeral runner.
 - **Large PRs:** up to 15 files per run; the rest are listed as deferred.

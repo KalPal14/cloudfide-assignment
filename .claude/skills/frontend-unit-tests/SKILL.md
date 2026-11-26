@@ -26,6 +26,11 @@ description: Conventions and ready-made patterns for writing Vitest + React Test
 
 ## Which pattern to use
 
+Each pattern shows **how to reach** the behaviour of one kind of unit: what to mock, what to keep
+real, how to trigger the awkward paths. **What to assert comes from the source under test**: read
+it and derive one case per branch, state and callback. The file names are where the pattern applies
+today, not a list of expected tests.
+
 | Unit | Approach |
 |---|---|
 | Feature components (`features/**/components`, `TodosPage`, `components/*`) | Mock the design system and child components/hooks at module level; assert props, text, roles and callbacks |
@@ -90,8 +95,9 @@ afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks() })
 fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({ detail: 'Task not found.' }) } as Response)
 ```
 
-Cover: URL prefix `/api`, merged headers, 204 → `undefined`, 422 message, string `detail`,
-non-JSON error body, network failure message, and re-throwing the original error when aborted.
+Cover how the request is built (URL, merged headers, body) and every branch of the response
+handling: each status the code treats specially, each shape of error body including one that is
+not JSON, a rejected `fetch`, and an aborted request.
 
 ### Timers and dates
 
@@ -115,9 +121,10 @@ import { theme } from '../../theme/theme'
 const renderWithTheme = (ui: React.ReactElement) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
 ```
 
-Test behaviour, not CSS: states (`disabled`, `locked` → disabled + lock icon + default "Locked"
-label), label/`htmlFor` association, `aria-invalid` and `aria-describedby` with helper/error text,
-`id` generation, `multiline`, option rendering, `onChange` wiring, checkbox group toggling.
+Test behaviour, not CSS: every state a prop switches (`disabled`, `locked`, `busy`, `multiline`, …)
+and what it renders or blocks, the accessible name and the label/`htmlFor` association,
+`aria-invalid` and `aria-describedby` with helper and error text, generated `id`s, rendered options,
+and each callback with the value it receives.
 
 **jsdom has no `HTMLDialogElement.prototype.showModal`/`close`.** For `Drawer`, stub them in the
 test file (never in `setup.ts`):

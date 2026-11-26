@@ -21,9 +21,15 @@ description: Conventions and ready-made patterns for writing Vitest unit tests f
 - **No database, no network.** The real Prisma client is constructed but its IO is mocked.
 - Restore everything: `afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); })`.
 - Environment: `TZ=UTC` is set by the runner; still build dates with explicit `Z` offsets.
-- Coverage thresholds are **per file**: `validators.ts` and `mappers.ts` must stay at 100%.
+- Coverage has global floors, and `validators.ts` and `mappers.ts` must stay at 100%
+  (`backend/vitest.config.ts`).
 
 ## Patterns
+
+Each pattern shows **how to reach** the behaviour of one kind of unit: what to mock, what to keep
+real, how to trigger the awkward paths. **What to assert comes from the source under test**: read
+it and derive one case per branch, status and error path. The file names are where the pattern
+applies today, not a list of expected tests.
 
 ### Router (HTTP layer) — mock the store, use Supertest
 
@@ -82,24 +88,26 @@ import { createDatabase } from '../src/core/database.ts';
 
 const database = createDatabase('postgresql://test:test@localhost:5432/test');
 const app = createApp(database);
-// 404 JSON for unknown routes, x-powered-by disabled, /openapi.json served
-// invalid JSON body -> 422 { detail: 'Invalid JSON.' }:
+// App-level behaviour is tested here: unknown routes, response headers, served documents.
+// A malformed JSON body reaches the body-parser error branch:
 await request(app).post('/api/todos').set('Content-Type', 'application/json').send('{"title":');
-// body over the express.json() 100 kB limit -> 413
-// unexpected errors -> 500 { detail: 'Internal Server Error' }; silence and assert the log:
+// A body over the express.json() limit (100 kB by default) reaches the "too large" branch.
+// An unexpected error reaches the last branch of the error handler; silence and assert the log:
 const log = vi.spyOn(console, 'error').mockImplementation(() => {});
 vi.spyOn(database.todo, 'findMany').mockRejectedValue(new Error('boom'));
 ```
 
-Health endpoint: mock `database.todo.findFirst` resolved (200 `{ status: 'ok' }`) and rejected (500).
+Cover every branch of the error handler with the request that triggers it. For a route that
+queries the database directly (the health check), spy on the Prisma delegate method it calls:
+resolve it for the success response and reject it for the failure response.
 
-### Configuration (`core/config.ts`)
+### Code that reads the environment (`core/config.ts`)
 
 `dotenv` loads the repo-root `.env` at import time, so a developer's local values may exist.
-Control every variable explicitly with `vi.stubEnv(name, value)`; use `''` to simulate "missing".
-Cover: explicit override argument, `DATABASE_URL`, the `postgresql+psycopg:` prefix rewrite,
-URL built from parts (including encoding of special characters in password and database name),
-and the error naming the first missing variable.
+Control every variable the unit reads with `vi.stubEnv(name, value)`; use `''` to simulate "missing".
+Cover each source of a value in its order of precedence (argument, variable, value built from
+parts), every rewrite or encoding applied to it (use values with special characters), and the error
+for each required variable that is missing.
 
 ### Startup (`core/lifespan.ts`) and entrypoint (`main.ts`)
 
@@ -115,7 +123,8 @@ vi.mock('../src/factory.ts', () => ({ createApp: vi.fn() }));
 - Capture shutdown handlers instead of registering real ones:
   `const once = vi.spyOn(process, 'once').mockImplementation(() => process);` then read
   `once.mock.calls`. Never send real signals.
-- Failure path: when `$connect` or `initialize` rejects, `start()` rejects and `$disconnect` ran.
+- Failure paths: make each startup step reject in turn; assert that the error propagates and that
+  whatever was opened before it is released.
 - `main.ts` runs on import: `vi.resetModules()`, mock `../src/core/lifespan.ts`, then
   `await import('../src/main.ts')`; assert `console.error` and `process.exitCode = 1` on failure,
   and reset `process.exitCode` afterwards.
@@ -123,7 +132,7 @@ vi.mock('../src/factory.ts', () => ({ createApp: vi.fn() }));
 ### Raw SQL (`initialize`)
 
 `vi.spyOn(database, '$executeRaw').mockResolvedValue(0)`; the first argument is the template
-strings array — assert it contains `CREATE TABLE IF NOT EXISTS todos` and the constraints.
+strings array — join it and assert the statement and the constraints that matter, not its whitespace.
 
 ## Commands (run from the repository root)
 

@@ -63,6 +63,9 @@ export function summarize({ policy, gate, diffCoverage, results, summaryBefore, 
   if (!policy?.ok) reasons.push('patch policy violations')
   if (policy?.empty) reasons.push('empty patch')
   if (gate && !gate.ok) reasons.push('quality gate violations')
+  // The workflow lets the gate exit non-zero; a gate that crashed before writing its result
+  // must not count as a gate that passed.
+  if (!gate && policy?.ok && !policy.empty) reasons.push('quality gate did not run')
   for (const [project, value] of Object.entries(projects)) {
     if (value.typecheck === 'fail') reasons.push(`${project} type check failed`)
     if (value.format === 'fail') reasons.push(`${project} formatting check failed`)
