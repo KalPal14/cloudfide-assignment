@@ -37,7 +37,7 @@ export function projectOf(path) {
 export function classifyFile(path) {
   const project = projectOf(path)
   if (isTestSpec(path) || isAllowedTestPath(path) || path === 'frontend/src/test/setup.ts') {
-    return { project, kind: 'test', testable: false, skipReason: 'test code (changed by the author)' }
+    return { project, kind: 'test', testable: false, skipReason: 'test code changed in this PR' }
   }
   const source = SOURCE.find((candidate) => candidate.pattern.test(path))
   if (!source) {

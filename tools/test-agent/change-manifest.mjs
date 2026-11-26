@@ -11,7 +11,7 @@ import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { parseDiff } from './lib/diff.mjs'
 import { classifyFile, relatedTests, testCandidateFor } from './lib/classify.mjs'
-import { coverageOfLines, fileCoverage, formatRanges, loadLineCoverage, mergeCoverage } from './lib/coverage.mjs'
+import { branchesOnLines, coverageOfLines, fileCoverage, formatRanges, loadBranchCoverage, loadLineCoverage, mergeCoverage } from './lib/coverage.mjs'
 import { git, isSha, listTrackedFiles } from './lib/git.mjs'
 import { scopeDirectories } from './lib/scopes.mjs'
 import { writeGithubOutputs, writeJson } from './lib/io.mjs'
@@ -25,11 +25,12 @@ function loadTestContents(root) {
   return new Map(tests.filter((path) => existsSync(join(root, path))).map((path) => [path, readFileSync(join(root, path), 'utf8')]))
 }
 
-function describeFile(entry, root, testContents, coverage) {
+function describeFile(entry, root, testContents, coverage, branchCoverage) {
   const { path } = entry
   const candidate = testCandidateFor(path)
   const lineCoverage = coverage.get(path)
   const changed = coverageOfLines(lineCoverage, entry.changedLines)
+  const branches = branchesOnLines(branchCoverage.get(path), entry.changedLines)
   const whole = fileCoverage(lineCoverage)
   return {
     path,
@@ -40,6 +41,9 @@ function describeFile(entry, root, testContents, coverage) {
     uncoveredRanges: formatRanges(changed.uncovered),
     changedLinesCoverage: changed.measured ? { executable: changed.executable, covered: changed.covered, pct: changed.pct } : null,
     uncoveredChangedLines: changed.uncovered,
+    changedBranchesCoverage: branches.measured ? { total: branches.total, covered: branches.covered, pct: branches.pct } : null,
+    uncoveredBranchRanges: formatRanges(branches.uncovered.map((branch) => branch.line)),
+    uncoveredBranches: branches.uncovered,
     fileLineCoverage: whole ? whole.pct : null,
     testCandidate: candidate,
     testExists: Boolean(candidate && existsSync(join(root, candidate))),
@@ -48,8 +52,8 @@ function describeFile(entry, root, testContents, coverage) {
 }
 
 function priority(file) {
-  // Most uncovered changed lines first, then files without any test.
-  return [file.uncoveredChangedLines.length, file.testExists ? 0 : 1, file.changedLines.length]
+  // Most uncovered changed lines and branches first, then files without any test.
+  return [file.uncoveredChangedLines.length + file.uncoveredBranches.length, file.testExists ? 0 : 1, file.changedLines.length]
 }
 
 function byPriority(a, b) {
@@ -59,7 +63,7 @@ function byPriority(a, b) {
   return a.path.localeCompare(b.path)
 }
 
-export function buildPrManifest({ root, base, head, coverage = new Map() }) {
+export function buildPrManifest({ root, base, head, coverage = new Map(), branchCoverage = new Map() }) {
   if (!isSha(base) || !isSha(head)) throw new Error('--base and --head must be commit SHAs')
   // Three-dot diff: changes on the PR branch since it forked from base,
   // so commits merged into base meanwhile do not show up as reverted.
@@ -88,10 +92,10 @@ export function buildPrManifest({ root, base, head, coverage = new Map() }) {
     }
     candidates.push({ path: file.path, project: info.project, status: file.status, changedLines: file.addedLines })
   }
-  return finalize({ mode: 'pr', base, head, scope: null, root, candidates, skipped, testContents, coverage })
+  return finalize({ mode: 'pr', base, head, scope: null, root, candidates, skipped, testContents, coverage, branchCoverage })
 }
 
-export function buildBackfillManifest({ root, scope, coverage = new Map() }) {
+export function buildBackfillManifest({ root, scope, coverage = new Map(), branchCoverage = new Map() }) {
   const directories = scopeDirectories(scope)
   const testContents = loadTestContents(root)
   const candidates = []
@@ -105,17 +109,18 @@ export function buildBackfillManifest({ root, scope, coverage = new Map() }) {
     const lineCoverage = coverage.get(path)
     const executable = lineCoverage ? [...lineCoverage.keys()].sort((a, b) => a - b) : []
     const whole = fileCoverage(lineCoverage)
-    if (whole && whole.executable > 0 && whole.uncovered.length === 0) {
-      skipped.push({ path, project: info.project, reason: 'already fully line-covered' })
+    const allBranches = branchCoverage.get(path) ?? []
+    if (whole && whole.executable > 0 && whole.uncovered.length === 0 && allBranches.every((branch) => branch.hits > 0)) {
+      skipped.push({ path, project: info.project, reason: 'already fully covered (lines and branches)' })
       continue
     }
     candidates.push({ path, project: info.project, status: 'existing', changedLines: executable })
   }
-  return finalize({ mode: 'backfill', base: null, head: null, scope, root, candidates, skipped, testContents, coverage })
+  return finalize({ mode: 'backfill', base: null, head: null, scope, root, candidates, skipped, testContents, coverage, branchCoverage })
 }
 
-function finalize({ mode, base, head, scope, root, candidates, skipped, testContents, coverage }) {
-  const described = candidates.map((entry) => describeFile(entry, root, testContents, coverage)).sort(byPriority)
+function finalize({ mode, base, head, scope, root, candidates, skipped, testContents, coverage, branchCoverage }) {
+  const described = candidates.map((entry) => describeFile(entry, root, testContents, coverage, branchCoverage)).sort(byPriority)
   const limit = MAX_FILES[mode]
   const files = described.slice(0, limit)
   const deferred = described.slice(limit).map((file) => ({ path: file.path, project: file.project, reason: `deferred: more than ${limit} files in one run` }))
@@ -154,10 +159,11 @@ function main() {
     },
   })
   const coverage = mergeCoverage(...values.coverage.map((file) => loadLineCoverage(file, values.root)))
+  const branchCoverage = mergeCoverage(...values.coverage.map((file) => loadBranchCoverage(file, values.root)))
   const manifest =
     values.mode === 'backfill'
-      ? buildBackfillManifest({ root: values.root, scope: values.scope, coverage })
-      : buildPrManifest({ root: values.root, base: values.base, head: values.head, coverage })
+      ? buildBackfillManifest({ root: values.root, scope: values.scope, coverage, branchCoverage })
+      : buildPrManifest({ root: values.root, base: values.base, head: values.head, coverage, branchCoverage })
   if (values.out) writeJson(values.out, manifest)
   else process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`)
   writeGithubOutputs(values['github-output'], {

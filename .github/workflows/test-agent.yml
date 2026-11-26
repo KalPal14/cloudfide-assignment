@@ -273,8 +273,9 @@ jobs:
           refresher=$!
           trap 'kill "$refresher" 2>/dev/null || true; rm -rf "$token_dir"' EXIT
 
-          # The agent does not need GitHub's OIDC request credentials; keep them out of its environment.
-          env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+          # The agent does not need GitHub's OIDC request credentials or the runner's step-summary
+          # file (unreachable inside the sandbox); keep them out of its environment.
+          env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL -u GITHUB_STEP_SUMMARY \
             claude -p "$(cat "tools/test-agent/prompts/$MODE.md")" \
               --agent unit-test-engineer \
               --setting-sources project \
