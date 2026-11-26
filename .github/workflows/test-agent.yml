@@ -238,8 +238,13 @@ jobs:
           SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
           WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           OIDC_AUDIENCE: ${{ vars.ANTHROPIC_OIDC_AUDIENCE || 'https://api.anthropic.com' }}
-          # Strip credentials from every subprocess the agent starts (tests, hooks).
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+          # Isolation comes from the regular Claude Code sandbox (.claude/test-agent/settings.json:
+          # no network, deny writes outside tests, deny reads of the OIDC token directory).
+          # The env-scrub hardening mode is off on purpose: it also blanks package.json and
+          # lockfiles at the project root inside the sandbox, which breaks Node and Vite module
+          # resolution for every frontend test. This step holds no long-lived secret, and the
+          # GitHub OIDC request variables are removed from the agent's environment below.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '0'
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
           DISABLE_AUTOUPDATER: '1'
           MODEL: ${{ vars.TEST_AGENT_MODEL || 'claude-sonnet-5-5' }}

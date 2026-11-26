@@ -71,6 +71,7 @@
     "enabled": true,
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": false,
     "network": {
       "allowedDomains": []
     },
