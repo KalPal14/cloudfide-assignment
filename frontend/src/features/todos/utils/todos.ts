@@ -69,3 +69,10 @@ export function formatDate(date: string): string {
     year: 'numeric',
   }).format(new Date(`${date}T12:00:00`))
 }
+
+export function formatClearedNotice(deleted: number): string {
+  if (deleted === 0) return 'No completed tasks to clear.'
+  return deleted === 1
+    ? '1 completed task cleared.'
+    : `${deleted} completed tasks cleared.`
+}

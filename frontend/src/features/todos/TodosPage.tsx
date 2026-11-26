@@ -13,6 +13,7 @@ import { useTodosBusy } from './hooks/useTodosBusy'
 import { useTodosQuery } from './hooks/useTodosQuery'
 import { useUpdateTodoMutation } from './hooks/useUpdateTodoMutation'
 import type { Todo } from './types'
+import { formatClearedNotice } from './utils/todos'
 
 export function TodosPage() {
   const todosQuery = useTodosQuery()
@@ -119,7 +120,7 @@ export function TodosPage() {
           onClose={() => setClearing(false)}
           onCleared={(deleted) => {
             setClearing(false)
-            notify(`${deleted} completed tasks cleared.`)
+            notify(formatClearedNotice(deleted))
           }}
         />
       )}
