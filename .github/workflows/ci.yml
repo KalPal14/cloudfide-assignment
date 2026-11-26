@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # Also dispatched by the Test Agent workflow after it pushes a commit:
+  # pushes made with GITHUB_TOKEN do not trigger workflows on their own.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    env:
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: ${{ matrix.project }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Format check
+        if: matrix.project == 'frontend'
+        run: npm run format:check
+
+      - name: Unit tests with coverage
+        run: npm run test:coverage -- --reporter=default --reporter=github-actions
+
+      - name: Coverage summary
+        if: always()
+        env:
+          PROJECT: ${{ matrix.project }}
+        run: |
+          [ -f coverage/coverage-summary.json ] || exit 0
+          node -e '
+            const total = require("./coverage/coverage-summary.json").total;
+            const rows = ["lines", "statements", "branches", "functions"]
+              .map((key) => `| ${key} | ${total[key].pct}% | ${total[key].covered}/${total[key].total} |`);
+            console.log([`### Coverage: ${process.env.PROJECT}`, "", "| Metric | % | Covered |", "|---|---|---|", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ matrix.project }}
+          path: ${{ matrix.project }}/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
