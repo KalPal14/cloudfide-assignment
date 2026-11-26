@@ -19,9 +19,9 @@
 | | Tests before → after | Line coverage before → after |
 |---|---|---|
 | backend | 48 → **80** | 33.0% → **100%** (statements 98.4, branches 95.8, functions 96.9) |
-| frontend | 18 → **134** | 35.5%¹ → **100%** (statements 99.1, branches 92.8, functions 100) |
+| frontend | 18 → **136** | 35.5%¹ → **100%** (statements 99.1, branches 93.6, functions 100) |
 
-¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 5 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)).
+¹ Measured with the design-system component logic now included (47.7% with the original scope). The agent generated every new test through the workflow in 6 backfill PRs. Thresholds now lock the level in ([#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)).
 
 **Demo:** [PR #12 "clear completed tasks"](https://github.com/KalPal14/cloudfide-assignment/pull/12) shows the full loop over three pushes. See the [example run](#example-run).
 
@@ -36,7 +36,7 @@
 | **Gate before the model** | Types, styles, stories, barrels, docs, config, generated code and tests changed in the PR are filtered out deterministically. PRs without testable changes never call the model and cost $0 ([#2](https://github.com/KalPal14/cloudfide-assignment/pull/2), [#11](https://github.com/KalPal14/cloudfide-assignment/pull/11)). Runs are capped at 15 files. Files are ordered by uncovered changed lines and branches. |
 | **Never trust the agent's own claims** | `verify` runs in a job **without credentials** on a fresh checkout. It applies the patch, then runs: type check, Prettier, the full suites with coverage, the changed specs 3× in shuffled order, a quality gate (no `.only/.skip/.todo/.fails`, no snapshots or `@ts-ignore`, at least one assertion per spec, no lost tests), and line and **branch** coverage of the changed lines before and after. This caught real failures (see [Implementation notes](#implementation-notes)). |
 | **Commit to the PR branch only after verification** | Tests arrive as a normal reviewable commit from `github-actions[bot]`. If verification fails, nothing is pushed: the comment explains why, and the patch stays in the run artifacts. |
-| **Workload identity federation, no API key** | GitHub OIDC → short-lived Anthropic credentials scoped to one workspace with a spend limit. The Console rule trusts only this repository, by its immutable owner and repository IDs. It accepts only `pull_request` events and `workflow_dispatch` on `main`. The recommended CEL in [How to run](#2-how-to-run-it) also pins the rule to the `test-agent.yml` workflow file. No secret is stored anywhere. |
+| **Workload identity federation, no API key** | GitHub OIDC → short-lived Anthropic credentials scoped to one workspace with a spend limit. The Console rule trusts only this repository, by its immutable owner and repository IDs. It accepts only `pull_request` events and `workflow_dispatch` on `main`, and only from the `test-agent.yml` workflow file (CEL on `workflow_ref`). A real run confirmed this after the clause was added ([run](https://github.com/KalPal14/cloudfide-assignment/actions/runs/45829462148)). No secret is stored anywhere. |
 | **Structured output plus observed facts** | `--json-schema tools/test-agent/report.schema.json` forces a validated report. The comment combines it with facts the harness observes itself: the skills actually invoked (from the transcript), turns, cost, guardrail denials and the verification verdict. |
 | **Batched backfill** | Each scope (`tools/test-agent/lib/scopes.mjs`) fits one run and becomes one reviewable PR. |
 
@@ -206,8 +206,9 @@ The agent decided no tests were needed. The new helper's *lines* were executed b
 | frontend-components | [#6](https://github.com/KalPal14/cloudfide-assignment/pull/6) | 18 | target files 60.6% → 100% | 30 turns, $0.34 |
 | frontend-hooks-lib | [#8](https://github.com/KalPal14/cloudfide-assignment/pull/8) | 41 | frontend lines 49% → 74% | 42 turns, $0.29 |
 | frontend-design-system | [#10](https://github.com/KalPal14/cloudfide-assignment/pull/10) | 57 | frontend lines 74% → 100% | 43 turns, $0.33 |
+| frontend-hooks-lib (follow-up after [#18](https://github.com/KalPal14/cloudfide-assignment/pull/18)) | [#19](https://github.com/KalPal14/cloudfide-assignment/pull/19) | 2 | `utils/todos.ts` branches 94.4% → 100% (sorting tie-breaks) | 16 turns, $0.09 |
 
-All agent runs so far, including the failed ones: **12 runs, $2.87 in total**.
+All agent runs that did work, including the failed ones and the sandbox probes: **16 runs, $3.18 in total**.
 
 ### Implementation notes
 
