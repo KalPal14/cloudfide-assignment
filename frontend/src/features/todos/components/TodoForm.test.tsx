@@ -46,6 +46,30 @@ describe('TodoForm', () => {
     })
   })
 
+  it('shows a server error and a saving state while busy', () => {
+    const { rerender } = render(
+      <TodoForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        busy={false}
+        error={null}
+      />,
+    )
+    expect(screen.queryByTestId('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save task' })).toBeEnabled()
+    rerender(
+      <TodoForm
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        busy
+        error="Could not save."
+      />,
+    )
+    expect(screen.getByTestId('alert')).toHaveTextContent('Could not save.')
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+  })
+
   it('submits the description and due date, clearing the date when emptied', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     const user = userEvent.setup()
